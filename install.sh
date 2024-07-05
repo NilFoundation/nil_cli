@@ -51,6 +51,11 @@ success() {
     echo -e "${Green}$@ ${Color_Off}"
 }
 
+exe_name=nil_cli
+
+command -v unzip >/dev/null ||
+    error "unzip is required to install $exe_name"
+
 if [[ $# -gt 0 ]]; then
     error 'Too many arguments'
 fi
@@ -67,8 +72,6 @@ case $platform in
     ;;
 esac
 
-exe_name=nil_cli
-
 if [[ $target = darwin-x64 ]]; then
     # Is this process running in Rosetta?
     # redirect stderr to devnull to avoid error message when not running in Rosetta
@@ -82,7 +85,7 @@ GITHUB=${GITHUB-"https://github.com"}
 
 github_repo="$GITHUB/NilFoundation/nil_cli"
 
-nil_cli_uri=$github_repo/releases/latest/download/$exe_name-$target
+nil_cli_uri=$github_repo/releases/latest/download/$exe_name-$target.zip
 
 bin_env=\$HOME/.local/bin
 
@@ -95,11 +98,14 @@ if [[ ! -d $bin_dir ]]; then
         error "Failed to create install directory \"$bin_dir\""
 fi
 
-curl --fail --location --progress-bar --output "$exe.dl" "$nil_cli_uri" ||
+curl --fail --location --progress-bar --output "$exe.zip" "$nil_cli_uri" ||
     error "Failed to download $exe_name from \"$nil_cli_uri\""
 
-mv "$exe.dl" "$exe" ||
-    error "Failed to move $exe_name to \"$exe\""
+unzip -oqd "$bin_dir" "$exe.zip" ||
+    error "Failed to extract $exe_name"
+
+rm "$exe.zip" ||
+    error "Failed to remove $exe.zip"
 
 chmod +x "$exe" ||
     error "Failed to set permissions on the $exe_name executable"
