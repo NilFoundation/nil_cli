@@ -51,7 +51,7 @@ success() {
     echo -e "${Green}$@ ${Color_Off}"
 }
 
-exe_name=nil_cli
+exe_name=nil
 
 command -v unzip >/dev/null ||
     error "unzip is required to install $exe_name"
@@ -144,7 +144,7 @@ fish)
 
     if [[ -w $fish_config ]]; then
         {
-            echo -e '\n# nil_cli'
+            echo -e '\n# nil'
 
             for command in "${commands[@]}"; do
                 echo "$command"
@@ -172,7 +172,7 @@ zsh)
 
     if [[ -w $zsh_config ]]; then
         {
-            echo -e '\n# nil_cli'
+            echo -e '\n# nil'
 
             for command in "${commands[@]}"; do
                 echo "$command"
@@ -215,7 +215,7 @@ bash)
 
         if [[ -w $bash_config ]]; then
             {
-                echo -e '\n# nil_cli'
+                echo -e '\n# nil'
 
                 for command in "${commands[@]}"; do
                     echo "$command"
@@ -252,4 +252,4 @@ if [[ $refresh_command ]]; then
     info_bold "  $refresh_command"
 fi
 
-info_bold "  nil_cli --help"
+info_bold "  $exe_name --help"
