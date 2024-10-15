@@ -1,88 +1,129 @@
-// SPDX-License-Identifier: GPL-3.0
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
 
-pragma solidity ^0.8.9;
-
-import "./NilCurrencyBase.sol";
+import "./Nil.sol";
 
 /**
- * @title Wallet
- * @dev Basic Wallet contract which provides functional for calling another contracts and sending tokens.
- * It also supports multi-currency functionality providing methods for minting and sending currency.
- * NilCurrencyBase class implements functional for managing own currency(where `currencyId = address(this)`).
+ * @title NilCurrencyBase
+ * @dev Abstract contract that provides functionality for currency processing.
+ * Methods with "Internal" suffix are internal, which means that they can be called only from the derived contract
+ * itself. But there are default wrapper methods that provide the account owner access to internal methods.
+ * They are virtual, so the main contract can disable them by overriding them. Then only logic of the contract can use
+ * internal methods.
  */
-contract Wallet is NilCurrencyBase {
-
-    bytes pubkey;
-
-    /**
-     * @dev Fallback function to receive Ether.
-     */
-    receive() external payable {}
+abstract contract NilCurrencyBase is NilBase {
+    uint totalSupply;
+    string tokenName;
 
     /**
-     * @dev Function to handle bounce messages.
-     * @param err The error message.
+     * @dev Returns the total supply of the currency.
+     * @return The total supply of the currency.
      */
-    function bounce(string calldata err) external payable {}
-
-    /**
-     * @dev Constructor to initialize the wallet with a public key.
-     * @param _pubkey The public key to initialize the wallet with.
-     */
-    constructor(bytes memory _pubkey) payable {
-        pubkey = _pubkey;
+    function getCurrencyTotalSupply() public view returns(uint) {
+        return totalSupply;
     }
 
     /**
-     * @dev Sends raw message.
-     * @param message The raw message to send.
+     * @dev Returns the balance of the currency owned by this contract.
+     * @return The balance of the currency owned by this contract.
      */
-    function send(bytes calldata message) onlyExternal public {
-        Nil.sendMessage(message);
+    function getOwnCurrencyBalance() public view returns(uint256) {
+        return Nil.currencyBalance(address(this), getCurrencyId());
     }
 
     /**
-     * @dev Makes an asynchronous call.
-     * @param dst The destination address.
-     * @param refundTo The address where to send refund message.
-     * @param bounceTo The address where to send bounce message.
-     * @param feeCredit The amount of tokens available to pay all fees during message processing.
-     * @param deploy Whether to deploy the contract.
-     * @param tokens The multi-currency tokens to send.
-     * @param value The value to send.
-     * @param callData The call data of the called method.
+     * @dev Returns the unique identifier of the currency owned by this contract.
+     * @return The unique identifier of the currency owned by this contract.
      */
-    function asyncCall(
-        address dst,
-        address refundTo,
-        address bounceTo,
-        uint feeCredit,
-        bool deploy,
-        Nil.Token[] memory tokens,
-        uint value,
-        bytes calldata callData) onlyExternal public {
-        Nil.asyncCallWithTokens(dst, refundTo, bounceTo, feeCredit, Nil.FORWARD_NONE, deploy, value, tokens, callData);
+    function getCurrencyId() public view returns(CurrencyId) {
+        return CurrencyId.wrap(address(this));
     }
 
     /**
-     * @dev Makes a synchronous call, which is just a regular EVM call, without using messages.
-     * @param dst The destination address.
-     * @param feeCredit The amount of tokens available to pay all fees during message processing.
-     * @param value The value to send.
-     * @param call_data The call data of the called method.
+     * @dev Returns the name of the currency.
+     * @return The name of the currency.
      */
-    function syncCall(address dst, uint feeCredit, uint value, bytes memory call_data) onlyExternal public {
-        (bool success,) = dst.call{value: value, gas: feeCredit}(call_data);
-        require(success, "Call failed");
+    function getCurrencyName() public view returns(string memory) {
+        return tokenName;
     }
 
     /**
-     * @dev Verifies an external message.
-     * @param hash The hash of the data.
-     * @param signature The signature to verify.
-     * @return True if the signature is valid, false otherwise.
+     * @dev Set the name of the currency.
+     * @param name The name of the currency.
      */
-    function verifyExternal(uint256 hash, bytes calldata signature) external view returns (bool) {
-        return Nil.validateSignature(pubkey, hash, signature);
+    function setCurrencyName(string memory name) onlyExternal virtual public {
+        tokenName = name;
+    }
+
+    /**
+     * @dev Mints a specified amount of currency using external call.
+     * It is wrapper over `mintCurrencyInternal` method to provide access to the owner of the account.
+     * @param amount The amount of currency to mint.
+     */
+    function mintCurrency(uint256 amount) onlyExternal virtual public {
+        mintCurrencyInternal(amount);
+    }
+
+    /**
+     * @dev Burns a specified amount of currency using external call.
+     * It is wrapper over `burnCurrencyInternal` method to provide access to the owner of the account.
+     * @param amount The amount of currency to burn.
+     */
+    function burnCurrency(uint256 amount) onlyExternal virtual public {
+        burnCurrencyInternal(amount);
+    }
+
+    /**
+     * @dev Sends a specified amount of arbitrary currency to a given address.
+     * It is wrapper over `sendCurrencyInternal` method to provide access to the owner of the account.
+     * @param amount The amount of currency to mint.
+     */
+    function sendCurrency(address to, CurrencyId currencyId, uint256 amount) onlyExternal virtual public {
+        sendCurrencyInternal(to, currencyId, amount);
+    }
+
+    /**
+     * @dev Mints a specified amount of currency and increases the total supply.
+     * All minting should be carried out using this method.
+     * @param amount The amount of currency to mint.
+     */
+    function mintCurrencyInternal(uint256 amount) internal {
+        bool success = __Precompile__(Nil.MANAGE_CURRENCY).precompileManageCurrency(amount, true);
+        require(success, "Mint failed");
+        totalSupply += amount;
+    }
+
+    /**
+     * @dev Burns a specified amount of currency and decreases the total supply.
+     * All burning should be carried out using this method.
+     * @param amount The amount of currency to mint.
+     */
+    function burnCurrencyInternal(uint256 amount) internal {
+        require(totalSupply >= amount, "Burn failed: not enough tokens");
+        bool success = __Precompile__(Nil.MANAGE_CURRENCY).precompileManageCurrency(amount, false);
+        require(success, "Burn failed");
+        totalSupply -= amount;
+    }
+
+    /**
+     * @dev Sends a specified amount of arbitrary currency to a given address.
+     * @param to The address to send the currency to.
+     * @param currencyId ID of the currency to send.
+     * @param amount The amount of currency to send.
+     */
+    function sendCurrencyInternal(address to, CurrencyId currencyId, uint256 amount) internal {
+        Nil.Token[] memory tokens_ = new Nil.Token[](1);
+        tokens_[0] = Nil.Token(currencyId, amount);
+        Nil.asyncCallWithTokens(to, address(0), address(0), 0, Nil.FORWARD_REMAINING, false, 0, tokens_, "");
+    }
+
+    /**
+     * @dev Returns the balance of the currency for a given address.
+     * @param account The address to check the balance for.
+     * @return The balance of the currency for the given address.
+     */
+    function getCurrencyBalanceOf(address account) public view returns(uint256) {
+        return Nil.currencyBalance(account, getCurrencyId());
     }
 }
+
